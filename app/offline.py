@@ -4,7 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, WebSocket
 from pydantic import BaseModel, field_validator
 
-import tic_tac_toe_cli as game
+from . import tic_tac_toe_cli as game
 
 
 router = APIRouter()
