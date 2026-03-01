@@ -1,7 +1,8 @@
 import logging
+from json import JSONDecodeError
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, field_validator
 
 from . import tic_tac_toe_cli as game
@@ -105,9 +106,14 @@ async def websocket_game(websocket: WebSocket, game_id: str):
         )
 
         while True:
-            raw = await websocket.receive_json()
             game.bind_state(session["state"])
             note = ""
+            try:
+                raw = await websocket.receive_json()
+            except JSONDecodeError:
+                note = "Invalid JSON payload. Use JSON object with row and col."
+                await websocket.send_json(ws_state_message(note))
+                continue
 
             if not isinstance(raw, dict):
                 note = "Invalid payload. Use JSON object with row and col."
@@ -143,9 +149,10 @@ async def websocket_game(websocket: WebSocket, game_id: str):
                     await websocket.close()
                 break
 
+    except WebSocketDisconnect:
+        pass
     except Exception as exc:
-        if exc.__class__.__name__ != "WebSocketDisconnect":
-            logger.exception("Backend error for game_id=%s: %s", game_id, exc)
+        logger.exception("Backend error for game_id=%s: %s", game_id, exc)
         if websocket_is_open(websocket):
             await websocket.close()
     finally:

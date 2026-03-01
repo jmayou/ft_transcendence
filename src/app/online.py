@@ -1,8 +1,9 @@
 import asyncio
 import logging
+from json import JSONDecodeError
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, field_validator
 
 from . import tic_tac_toe_cli as game
@@ -141,23 +142,28 @@ async def websocket_online(websocket: WebSocket, game_id: str):
         return
 
     try:
-        join_payload = await websocket.receive_json()
-        if not isinstance(join_payload, dict):
-            await websocket.send_json({"error": "Invalid join payload."})
-            await websocket.close()
-            return
+        while True:
+            try:
+                join_payload = await websocket.receive_json()
+            except JSONDecodeError:
+                await send_json_safe(websocket, {"error": "Invalid JSON join payload."})
+                continue
 
-        raw_player_id = join_payload.get("player_id")
-        if not isinstance(raw_player_id, str):
-            await websocket.send_json({"error": "player_id is required for websocket join."})
-            await websocket.close()
-            return
+            if not isinstance(join_payload, dict):
+                await send_json_safe(websocket, {"error": "Invalid join payload."})
+                continue
 
-        player_id = raw_player_id.strip()
-        if player_id not in session["roles"]:
-            await websocket.send_json({"error": "Unknown player_id for this game."})
-            await websocket.close()
-            return
+            raw_player_id = join_payload.get("player_id")
+            if not isinstance(raw_player_id, str):
+                await send_json_safe(websocket, {"error": "player_id is required for websocket join."})
+                continue
+
+            player_id = raw_player_id.strip()
+            if player_id not in session["roles"]:
+                await send_json_safe(websocket, {"error": "Unknown player_id for this game."})
+                continue
+
+            break
 
         async with session["lock"]:
             if session["finished"]:
@@ -197,8 +203,12 @@ async def websocket_online(websocket: WebSocket, game_id: str):
             )
 
         while True:
-            raw = await websocket.receive_json()
             game.bind_state(session["state"])
+            try:
+                raw = await websocket.receive_json()
+            except JSONDecodeError:
+                await send_json_safe(websocket, ws_state_message("Invalid JSON payload. Use JSON object."))
+                continue
 
             async with session["lock"]:
                 note = ""
@@ -250,9 +260,16 @@ async def websocket_online(websocket: WebSocket, game_id: str):
                 cleanup_session(game_id)
                 break
 
+    except WebSocketDisconnect:
+        current_session = active_online_games.get(game_id)
+        if current_session is not None and not current_session["finished"]:
+            if player_id is not None and current_session["connections"].get(player_id) is websocket:
+                del current_session["connections"][player_id]
+            if current_session["connections"]:
+                await close_all_connections(current_session, "A player disconnected. Game closed.")
+            cleanup_session(game_id)
     except Exception as exc:
-        if exc.__class__.__name__ != "WebSocketDisconnect":
-            logger.exception("Online backend error for game_id=%s: %s", game_id, exc)
+        logger.exception("Online backend error for game_id=%s: %s", game_id, exc)
 
         current_session = active_online_games.get(game_id)
         if current_session is not None and not current_session["finished"]:
