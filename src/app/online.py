@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from json import JSONDecodeError
 from typing import Optional
 
@@ -10,7 +9,6 @@ from . import tic_tac_toe_cli as game
 
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 active_online_games = {}
 active_online_player_ids = set()
 
@@ -269,7 +267,7 @@ async def websocket_online(websocket: WebSocket, game_id: str):
                 await close_all_connections(current_session, "A player disconnected. Game closed.")
             cleanup_session(game_id)
     except Exception as exc:
-        logger.exception("Online backend error for game_id=%s: %s", game_id, exc)
+        print(f"[ws-online {game_id}] backend error: {exc}")
 
         current_session = active_online_games.get(game_id)
         if current_session is not None and not current_session["finished"]:

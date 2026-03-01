@@ -1,4 +1,3 @@
-import logging
 from json import JSONDecodeError
 from typing import Literal
 
@@ -9,7 +8,6 @@ from . import tic_tac_toe_cli as game
 
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 active_games = {}
 active_player_ids = set()
 
@@ -152,7 +150,7 @@ async def websocket_game(websocket: WebSocket, game_id: str):
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.exception("Backend error for game_id=%s: %s", game_id, exc)
+        print(f"[ws {game_id}] backend error: {exc}")
         if websocket_is_open(websocket):
             await websocket.close()
     finally:

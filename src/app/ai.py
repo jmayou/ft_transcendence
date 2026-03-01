@@ -1,4 +1,3 @@
-import logging
 from json import JSONDecodeError
 from pathlib import Path
 
@@ -11,7 +10,6 @@ from . import tic_tac_toe_cli as game
 
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 active_ai_games = {}
 active_ai_player_ids = set()
 
@@ -37,9 +35,9 @@ try:
     if MODEL_PATH.exists():
         MODEL = load_model(str(MODEL_PATH))
     else:
-        logger.warning("AI model file not found at %s, fallback to minimax strategy.", MODEL_PATH)
+        print(f"[ai] model not found at {MODEL_PATH}, using minimax fallback")
 except Exception as exc:
-    logger.exception("Could not load AI model from %s: %s. Falling back to minimax.", MODEL_PATH, exc)
+    print(f"[ai] failed to load model at {MODEL_PATH}: {exc}. Using minimax fallback")
 
 
 def websocket_is_open(websocket):
@@ -94,7 +92,7 @@ def apply_ai_turn(session):
         try:
             action = MODEL.choose_action(board, ai_player)
         except Exception as exc:
-            logger.exception("AI model inference failed, fallback to minimax: %s", exc)
+            print(f"[ai] model inference failed: {exc}. Using minimax fallback")
 
     if action not in available:
         action = minimax_action(board, ai_player)
@@ -234,7 +232,7 @@ async def websocket_ai(websocket: WebSocket, game_id: str):
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.exception("AI backend error for game_id=%s: %s", game_id, exc)
+        print(f"[ws-ai {game_id}] backend error: {exc}")
         if websocket_is_open(websocket):
             await websocket.close()
     finally:
